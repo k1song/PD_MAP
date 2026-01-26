@@ -202,6 +202,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeModalBtn.addEventListener('click', closeModal);
     saveEventBtn.addEventListener('click', saveEvent);
-    deleteEventBtn.addEventListener('click', deleteEvent); // You'll need to show this button when editing
+    deleteEventBtn.addEventListener('click', deleteEvent);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeModal();
+        }
+    });
 
     setLanguage(currentLanguage);
