@@ -15,9 +15,21 @@
       <button id="today-btn" class="today-btn">Today</button>
       <button id="settings-btn" class="settings-btn" aria-label="설정">&#9881;</button>
     </header>
-    <div class="calendar-grid" id="calendar-grid">
-      <div id="day-headers"></div>
-      <div id="calendar-body"></div>
+    <div class="calendar-content">
+      <div class="monthly-panel">
+        <div class="panel-label">Monthly</div>
+        <div class="calendar-grid" id="calendar-grid">
+          <div id="day-headers"></div>
+          <div id="calendar-body"></div>
+        </div>
+      </div>
+      <div class="weekly-panel">
+        <div class="panel-label">Weekly</div>
+        <div class="weekly-day-headers" id="weekly-day-headers"></div>
+        <div class="weekly-scroll" id="weekly-scroll">
+          <div class="weekly-grid" id="weekly-grid"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -48,13 +60,6 @@
           <div class="toggle-group">
             <button class="toggle-btn" data-setting="startDay" data-value="0" data-i18n-btn="sun">일요일</button>
             <button class="toggle-btn" data-setting="startDay" data-value="1" data-i18n-btn="mon">월요일</button>
-          </div>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label" data-i18n="view">보기</span>
-          <div class="toggle-group">
-            <button class="toggle-btn" data-setting="view" data-value="monthly" data-i18n-btn="monthly">Monthly</button>
-            <button class="toggle-btn" data-setting="view" data-value="weekly" data-i18n-btn="weekly">Weekly</button>
           </div>
         </div>
       </div>

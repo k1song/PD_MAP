@@ -24,6 +24,10 @@
   --other-text: #bbb;
   --divider: #eee;
   --setting-row-bg: transparent;
+  --weekly-am-bg: #eef4ff;
+  --weekly-am-hover: #e0ecff;
+  --weekly-pm-bg: #fff5ee;
+  --weekly-pm-hover: #ffecdf;
 }
 
 [data-theme="dark"] {
@@ -46,6 +50,10 @@
   --other-text: #555;
   --divider: #2a2a34;
   --setting-row-bg: transparent;
+  --weekly-am-bg: #1a2030;
+  --weekly-am-hover: #222840;
+  --weekly-pm-bg: #2a1e1a;
+  --weekly-pm-hover: #362620;
 }
 
 html, body {
@@ -114,10 +122,43 @@ html, body {
   margin-left: 4px;
 }
 
-/* Calendar Grid */
+/* Split layout */
+.calendar-content {
+  display: flex;
+  flex: 1;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.monthly-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.weekly-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.panel-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.1em;
+  padding: 0 2px 5px;
+}
+
+/* Calendar Grid (Monthly) */
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: auto;
+  grid-auto-rows: 1fr;
   flex: 1;
   gap: 1px;
   background: var(--border);
@@ -192,11 +233,6 @@ html, body {
   color: #fff;
 }
 
-/* Weekly view: taller cells */
-.calendar-grid.weekly .day-cell {
-  padding: 8px;
-}
-
 /* Events inside cells */
 .events-container {
   display: flex;
@@ -222,6 +258,150 @@ html, body {
   font-size: 0.65rem;
   color: var(--text-secondary);
   padding: 1px 4px;
+}
+
+/* Weekly time grid */
+.weekly-day-headers {
+  display: grid;
+  grid-template-columns: 46px repeat(7, 1fr);
+  background: var(--header-bg);
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.weekly-corner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 0;
+}
+
+.weekly-day-header {
+  color: var(--header-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 5px 2px;
+  letter-spacing: 0.02em;
+}
+
+.weekly-day-header.sunday { color: var(--sunday); }
+.weekly-day-header.saturday { color: var(--saturday); }
+.weekly-day-header.today-col {
+  background: rgba(67, 97, 238, 0.15);
+}
+
+.weekly-scroll {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  cursor: grab;
+  user-select: none;
+  border-radius: 0 0 12px 12px;
+}
+
+.weekly-scroll:active {
+  cursor: grabbing;
+}
+
+.weekly-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.weekly-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.weekly-scroll::-webkit-scrollbar-thumb {
+  background: var(--btn-bg);
+  border-radius: 3px;
+}
+
+.weekly-grid {
+  display: grid;
+  grid-template-columns: 46px repeat(7, 1fr);
+  grid-template-rows: repeat(24, 1fr);
+  min-height: calc(100% * 24 / 18);
+  gap: 1px;
+  background: var(--border);
+}
+
+.weekly-time-label {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  font-weight: 500;
+}
+
+.weekly-time-label.am {
+  background: var(--weekly-am-bg);
+}
+
+.weekly-time-label.pm {
+  background: var(--weekly-pm-bg);
+}
+
+.weekly-cell {
+  padding: 2px 3px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.12s;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.weekly-cell.am {
+  background: var(--weekly-am-bg);
+}
+
+.weekly-cell.am:hover {
+  background: var(--weekly-am-hover);
+}
+
+.weekly-cell.pm {
+  background: var(--weekly-pm-bg);
+}
+
+.weekly-cell.pm:hover {
+  background: var(--weekly-pm-hover);
+}
+
+.weekly-cell.today-col {
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.weekly-cell.today-col.hour-0 {
+  border-top: 2px solid var(--accent);
+}
+
+.weekly-cell.today-col.hour-23 {
+  border-bottom: 2px solid var(--accent);
+}
+
+.weekly-event-chip {
+  font-size: 0.58rem;
+  padding: 1px 3px;
+  border-radius: 2px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+/* AM/PM divider */
+.weekly-cell.pm.hour-12 {
+  border-top: 2px solid var(--border);
+}
+
+.weekly-time-label.pm.hour-12 {
+  border-top: 2px solid var(--border);
 }
 
 /* Modal shared */

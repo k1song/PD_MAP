@@ -3,20 +3,16 @@ const i18n = {
   ko: {
     days: ['일', '월', '화', '수', '목', '금', '토'],
     monthTitle: (y, m) => `${y}년 ${m + 1}월`,
-    weekTitle: (y, m, d, m2, d2) => `${y}년 ${m + 1}월 ${d}일 ~ ${m2 + 1}월 ${d2}일`,
     dateModal: (y, m, d) => `${y}년 ${m + 1}월 ${d}일`,
     more: (n) => `+${n}개 더보기`,
     settings: '설정',
     lang: '언어',
     theme: '테마',
     startDay: '시작 요일',
-    view: '보기',
     light: '라이트',
     dark: '다크',
     sun: '일요일',
     mon: '월요일',
-    monthly: 'Monthly',
-    weekly: 'Weekly',
     save: '저장',
     placeholder: '일정 제목',
   },
@@ -25,10 +21,6 @@ const i18n = {
     monthTitle: (y, m) => {
       const names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       return `${names[m]} ${y}`;
-    },
-    weekTitle: (y, m, d, m2, d2) => {
-      const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return `${names[m]} ${d} ~ ${names[m2]} ${d2}, ${y}`;
     },
     dateModal: (y, m, d) => {
       const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -39,20 +31,17 @@ const i18n = {
     lang: 'Language',
     theme: 'Theme',
     startDay: 'Start Day',
-    view: 'View',
     light: 'Light',
     dark: 'Dark',
     sun: 'Sunday',
     mon: 'Monday',
-    monthly: 'Monthly',
-    weekly: 'Weekly',
     save: 'Save',
     placeholder: 'Event title',
   },
 };
 
 // --- Settings ---
-const defaultSettings = { lang: 'ko', theme: 'light', startDay: '0', view: 'monthly' };
+const defaultSettings = { lang: 'ko', theme: 'light', startDay: '0' };
 
 function loadSettings() {
   const saved = localStorage.getItem('pdmap-settings');
@@ -92,6 +81,10 @@ const eventTitleInput = document.getElementById('event-title');
 const eventStartInput = document.getElementById('event-start');
 const eventEndInput = document.getElementById('event-end');
 const eventList = document.getElementById('event-list');
+
+const weeklyDayHeaders = document.getElementById('weekly-day-headers');
+const weeklyGrid = document.getElementById('weekly-grid');
+const weeklyScroll = document.getElementById('weekly-scroll');
 
 let selectedDateKey = '';
 
@@ -137,15 +130,12 @@ function applySettings() {
   document.querySelector('[data-i18n="lang"]').textContent = t.lang;
   document.querySelector('[data-i18n="theme"]').textContent = t.theme;
   document.querySelector('[data-i18n="startDay"]').textContent = t.startDay;
-  document.querySelector('[data-i18n="view"]').textContent = t.view;
 
   // Update settings button labels
   document.querySelector('[data-i18n-btn="light"]').textContent = t.light;
   document.querySelector('[data-i18n-btn="dark"]').textContent = t.dark;
   document.querySelector('[data-i18n-btn="sun"]').textContent = t.sun;
   document.querySelector('[data-i18n-btn="mon"]').textContent = t.mon;
-  document.querySelector('[data-i18n-btn="monthly"]').textContent = t.monthly;
-  document.querySelector('[data-i18n-btn="weekly"]').textContent = t.weekly;
   document.querySelector('[data-i18n-btn="save"]').textContent = t.save;
 
   // Placeholder
@@ -159,7 +149,7 @@ function applySettings() {
   });
 }
 
-// --- Render day headers ---
+// --- Render day headers (monthly) ---
 function renderDayHeaders() {
   dayHeaders.innerHTML = '';
   const t = i18n[settings.lang];
@@ -175,18 +165,12 @@ function renderDayHeaders() {
   }
 }
 
-// --- Render calendar ---
+// --- Render ---
 function render() {
   applySettings();
   renderDayHeaders();
-
-  if (settings.view === 'weekly') {
-    calendarGrid.classList.add('weekly');
-    renderWeekly();
-  } else {
-    calendarGrid.classList.remove('weekly');
-    renderMonthly();
-  }
+  renderMonthly();
+  renderWeeklyGrid();
 }
 
 function renderMonthly() {
@@ -247,51 +231,94 @@ function renderMonthly() {
     appendEvents(cell, dateKey(cellYear, cellMonth, date), events, 2);
 
     const cy = cellYear, cm = cellMonth, cd = date;
-    cell.addEventListener('click', () => openModal(cy, cm, cd));
+    cell.addEventListener('click', () => {
+      // Update weekly to show this day's week
+      currentWeekStart = getWeekStart(new Date(cy, cm, cd));
+      renderWeeklyGrid();
+      openModal(cy, cm, cd);
+    });
     calendarBody.appendChild(cell);
   }
 }
 
-function renderWeekly() {
+// --- Weekly time grid ---
+function renderWeeklyGrid() {
   const t = i18n[settings.lang];
-  const weekEnd = addDays(currentWeekStart, 6);
-  monthTitle.textContent = t.weekTitle(
-    currentWeekStart.getFullYear(),
-    currentWeekStart.getMonth(), currentWeekStart.getDate(),
-    weekEnd.getMonth(), weekEnd.getDate()
-  );
-  calendarBody.innerHTML = '';
 
-  const events = getEvents();
-  const start = parseInt(settings.startDay);
+  // Render day headers
+  weeklyDayHeaders.innerHTML = '';
+  const corner = document.createElement('div');
+  corner.className = 'weekly-corner';
+  weeklyDayHeaders.appendChild(corner);
 
   for (let i = 0; i < 7; i++) {
     const d = addDays(currentWeekStart, i);
-    const cell = document.createElement('div');
-    cell.classList.add('day-cell');
+    const dayIdx = d.getDay();
+    const header = document.createElement('div');
+    header.className = 'weekly-day-header';
+    if (dayIdx === 0) header.classList.add('sunday');
+    if (dayIdx === 6) header.classList.add('saturday');
 
-    const dayNum = document.createElement('span');
-    dayNum.classList.add('day-number');
-    dayNum.textContent = d.getDate();
-
-    const actualDay = (start + i) % 7;
-    if (actualDay === 0) cell.classList.add('sunday');
-    if (actualDay === 6) cell.classList.add('saturday');
-
-    if (
-      d.getFullYear() === today.getFullYear() &&
+    const isToday = d.getFullYear() === today.getFullYear() &&
       d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-    ) {
-      cell.classList.add('today');
+      d.getDate() === today.getDate();
+    if (isToday) header.classList.add('today-col');
+
+    header.textContent = `${t.days[dayIdx]} ${d.getDate()}`;
+    weeklyDayHeaders.appendChild(header);
+  }
+
+  // Render time grid
+  weeklyGrid.innerHTML = '';
+  const events = getEvents();
+
+  for (let hour = 0; hour < 24; hour++) {
+    const isAM = hour < 12;
+    const period = isAM ? 'am' : 'pm';
+
+    // Time label
+    const label = document.createElement('div');
+    label.className = `weekly-time-label ${period}`;
+    if (hour === 12) label.classList.add('hour-12');
+    label.textContent = `${hour}:00`;
+    weeklyGrid.appendChild(label);
+
+    // Day cells
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(currentWeekStart, i);
+      const cell = document.createElement('div');
+      cell.className = `weekly-cell ${period}`;
+      cell.classList.add(`hour-${hour}`);
+
+      // Today column highlight
+      const isToday = d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+      if (isToday) cell.classList.add('today-col');
+
+      // Events in this hour
+      const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      const dayEvents = events[key] || [];
+      dayEvents.forEach((ev) => {
+        if (ev.start) {
+          const evHour = parseInt(ev.start.split(':')[0]);
+          if (evHour === hour) {
+            const chip = document.createElement('div');
+            chip.className = 'weekly-event-chip';
+            chip.style.background = ev.color;
+            chip.textContent = ev.title;
+            cell.appendChild(chip);
+          }
+        }
+      });
+
+      const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
+      cell.addEventListener('click', () => {
+        if (wasDragging) return;
+        openModal(cy, cm, cd);
+      });
+      weeklyGrid.appendChild(cell);
     }
-
-    cell.appendChild(dayNum);
-    appendEvents(cell, dateKey(d.getFullYear(), d.getMonth(), d.getDate()), events, 10);
-
-    const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
-    cell.addEventListener('click', () => openModal(cy, cm, cd));
-    calendarBody.appendChild(cell);
   }
 }
 
@@ -317,24 +344,44 @@ function appendEvents(cell, key, events, maxShow) {
   cell.appendChild(container);
 }
 
+// --- Drag to scroll (weekly) ---
+let isDragging = false;
+let wasDragging = false;
+let dragStartY = 0;
+let dragScrollTop = 0;
+
+weeklyScroll.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  wasDragging = false;
+  dragStartY = e.pageY;
+  dragScrollTop = weeklyScroll.scrollTop;
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  if (Math.abs(e.pageY - dragStartY) > 3) {
+    wasDragging = true;
+  }
+  weeklyScroll.scrollTop = dragScrollTop - (e.pageY - dragStartY);
+});
+
+document.addEventListener('mouseup', () => {
+  isDragging = false;
+  setTimeout(() => { wasDragging = false; }, 0);
+});
+
 // --- Navigation ---
 prevBtn.addEventListener('click', () => {
-  if (settings.view === 'weekly') {
-    currentWeekStart = addDays(currentWeekStart, -7);
-  } else {
-    currentMonth--;
-    if (currentMonth < 0) { currentMonth = 11; currentYear--; }
-  }
+  currentMonth--;
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  currentWeekStart = getWeekStart(new Date(currentYear, currentMonth, 1));
   render();
 });
 
 nextBtn.addEventListener('click', () => {
-  if (settings.view === 'weekly') {
-    currentWeekStart = addDays(currentWeekStart, 7);
-  } else {
-    currentMonth++;
-    if (currentMonth > 11) { currentMonth = 0; currentYear++; }
-  }
+  currentMonth++;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  currentWeekStart = getWeekStart(new Date(currentYear, currentMonth, 1));
   render();
 });
 
@@ -365,7 +412,7 @@ document.querySelectorAll('.toggle-btn').forEach((btn) => {
     settings[key] = val;
     saveSettings(settings);
 
-    if (key === 'startDay' || key === 'view') {
+    if (key === 'startDay') {
       currentWeekStart = getWeekStart(today);
     }
 
