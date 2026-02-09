@@ -1,30 +1,55 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>캘린더</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDMap Calendar</title>
+  <link href='/style.css' rel='stylesheet'>
 </head>
 <body>
-    <div id="calendar-container">
-        <div id="calendar-header">
-            <button id="prev-month-btn">&lt;</button>
-            <h1 id="month-year"></h1>
-            <button id="next-month-btn">&gt;</button>
-            <button id="lang-toggle-btn">EN</button>
-        </div>
-        <div id="calendar-grid">
-            <div class="day-name" data-lang-key="sun">일</div>
-            <div class="day-name" data-lang-key="mon">월</div>
-            <div class="day-name" data-lang-key="tue">화</div>
-            <div class="day-name" data-lang-key="wed">수</div>
-            <div class="day-name" data-lang-key="thu">목</div>
-            <div class="day-name" data-lang-key="fri">금</div>
-            <div class="day-name" data-lang-key="sat">토</div>
-        </div>
+  <div id="calendar">
+    <header class="calendar-header">
+      <button id="prev-month" aria-label="이전 달">&lt;</button>
+      <h1 id="month-title"></h1>
+      <button id="next-month" aria-label="다음 달">&gt;</button>
+    </header>
+    <div class="calendar-grid">
+      <div class="day-header">일</div>
+      <div class="day-header">월</div>
+      <div class="day-header">화</div>
+      <div class="day-header">수</div>
+      <div class="day-header">목</div>
+      <div class="day-header">금</div>
+      <div class="day-header">토</div>
+      <div id="calendar-body"></div>
     </div>
+  </div>
 
-    <script src="main.js"></script>
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title"></h2>
+        <button id="modal-close" aria-label="닫기">&times;</button>
+      </div>
+      <form id="event-form">
+        <input type="text" id="event-title" placeholder="일정 제목" required autocomplete="off" />
+        <div class="time-row">
+          <input type="time" id="event-start" />
+          <span>~</span>
+          <input type="time" id="event-end" />
+        </div>
+        <div class="color-picker">
+          <label class="color-option" data-color="#4361ee"><input type="radio" name="event-color" value="#4361ee" checked><span style="background:#4361ee"></span></label>
+          <label class="color-option" data-color="#e74c3c"><input type="radio" name="event-color" value="#e74c3c"><span style="background:#e74c3c"></span></label>
+          <label class="color-option" data-color="#2ecc71"><input type="radio" name="event-color" value="#2ecc71"><span style="background:#2ecc71"></span></label>
+          <label class="color-option" data-color="#f39c12"><input type="radio" name="event-color" value="#f39c12"><span style="background:#f39c12"></span></label>
+          <label class="color-option" data-color="#9b59b6"><input type="radio" name="event-color" value="#9b59b6"><span style="background:#9b59b6"></span></label>
+        </div>
+        <button type="submit" class="btn-save">저장</button>
+      </form>
+      <ul id="event-list"></ul>
+    </div>
+  </div>
+  <script defer type="text/javascript" src="/main.js"></script>
 </body>
 </html>
