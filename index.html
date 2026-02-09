@@ -9,22 +9,59 @@
 <body>
   <div id="calendar">
     <header class="calendar-header">
-      <button id="prev-month" aria-label="이전 달">&lt;</button>
+      <button id="prev-btn" aria-label="이전">&lt;</button>
       <h1 id="month-title"></h1>
-      <button id="next-month" aria-label="다음 달">&gt;</button>
+      <button id="next-btn" aria-label="다음">&gt;</button>
+      <button id="today-btn" class="today-btn">Today</button>
+      <button id="settings-btn" class="settings-btn" aria-label="설정">&#9881;</button>
     </header>
-    <div class="calendar-grid">
-      <div class="day-header">일</div>
-      <div class="day-header">월</div>
-      <div class="day-header">화</div>
-      <div class="day-header">수</div>
-      <div class="day-header">목</div>
-      <div class="day-header">금</div>
-      <div class="day-header">토</div>
+    <div class="calendar-grid" id="calendar-grid">
+      <div id="day-headers"></div>
       <div id="calendar-body"></div>
     </div>
   </div>
 
+  <!-- Settings Panel -->
+  <div id="settings-overlay" class="modal-overlay hidden">
+    <div class="modal settings-modal">
+      <div class="modal-header">
+        <h2 id="settings-title">설정</h2>
+        <button id="settings-close" aria-label="닫기">&times;</button>
+      </div>
+      <div class="settings-body">
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="lang">언어</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-setting="lang" data-value="ko">한글</button>
+            <button class="toggle-btn" data-setting="lang" data-value="en">English</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="theme">테마</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-setting="theme" data-value="light" data-i18n-btn="light">라이트</button>
+            <button class="toggle-btn" data-setting="theme" data-value="dark" data-i18n-btn="dark">다크</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="startDay">시작 요일</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-setting="startDay" data-value="0" data-i18n-btn="sun">일요일</button>
+            <button class="toggle-btn" data-setting="startDay" data-value="1" data-i18n-btn="mon">월요일</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label" data-i18n="view">보기</span>
+          <div class="toggle-group">
+            <button class="toggle-btn" data-setting="view" data-value="monthly" data-i18n-btn="monthly">Monthly</button>
+            <button class="toggle-btn" data-setting="view" data-value="weekly" data-i18n-btn="weekly">Weekly</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Modal -->
   <div id="modal-overlay" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
@@ -39,17 +76,18 @@
           <input type="time" id="event-end" />
         </div>
         <div class="color-picker">
-          <label class="color-option" data-color="#4361ee"><input type="radio" name="event-color" value="#4361ee" checked><span style="background:#4361ee"></span></label>
-          <label class="color-option" data-color="#e74c3c"><input type="radio" name="event-color" value="#e74c3c"><span style="background:#e74c3c"></span></label>
-          <label class="color-option" data-color="#2ecc71"><input type="radio" name="event-color" value="#2ecc71"><span style="background:#2ecc71"></span></label>
-          <label class="color-option" data-color="#f39c12"><input type="radio" name="event-color" value="#f39c12"><span style="background:#f39c12"></span></label>
-          <label class="color-option" data-color="#9b59b6"><input type="radio" name="event-color" value="#9b59b6"><span style="background:#9b59b6"></span></label>
+          <label class="color-option"><input type="radio" name="event-color" value="#4361ee" checked><span style="background:#4361ee"></span></label>
+          <label class="color-option"><input type="radio" name="event-color" value="#e74c3c"><span style="background:#e74c3c"></span></label>
+          <label class="color-option"><input type="radio" name="event-color" value="#2ecc71"><span style="background:#2ecc71"></span></label>
+          <label class="color-option"><input type="radio" name="event-color" value="#f39c12"><span style="background:#f39c12"></span></label>
+          <label class="color-option"><input type="radio" name="event-color" value="#9b59b6"><span style="background:#9b59b6"></span></label>
         </div>
-        <button type="submit" class="btn-save">저장</button>
+        <button type="submit" class="btn-save" data-i18n-btn="save">저장</button>
       </form>
       <ul id="event-list"></ul>
     </div>
   </div>
+
   <script defer type="text/javascript" src="/main.js"></script>
 </body>
 </html>
