@@ -691,3 +691,57 @@ html, body {
 [data-theme="dark"] .btn-delete:hover {
   background: #3a2020;
 }
+
+/* Selected week highlight on monthly */
+.day-cell.selected-week {
+  background: rgba(67, 97, 238, 0.1);
+}
+
+[data-theme="dark"] .day-cell.selected-week {
+  background: rgba(90, 122, 254, 0.15);
+}
+
+.day-cell.selected-week:hover {
+  background: rgba(67, 97, 238, 0.18);
+}
+
+[data-theme="dark"] .day-cell.selected-week:hover {
+  background: rgba(90, 122, 254, 0.25);
+}
+
+/* Drag selecting on weekly */
+.weekly-cell.drag-selecting {
+  background: rgba(67, 97, 238, 0.3) !important;
+}
+
+/* Context menu */
+.context-menu {
+  position: fixed;
+  background: var(--modal-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  padding: 4px 0;
+  z-index: 200;
+  min-width: 130px;
+}
+
+.context-menu.hidden {
+  display: none;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.context-menu button:hover {
+  background: var(--cell-hover);
+}
