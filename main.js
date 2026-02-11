@@ -18,6 +18,7 @@ const i18n = {
     layout: '배치',
     layoutMW: '월|주',
     layoutWM: '주|월',
+    allDay: '종일',
   },
   en: {
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -43,6 +44,7 @@ const i18n = {
     layout: 'Layout',
     layoutMW: 'M|W',
     layoutWM: 'W|M',
+    allDay: 'All Day',
   },
 };
 
@@ -92,7 +94,12 @@ const weeklyDayHeaders = document.getElementById('weekly-day-headers');
 const weeklyGrid = document.getElementById('weekly-grid');
 const weeklyScroll = document.getElementById('weekly-scroll');
 
+const eventAlldayCheckbox = document.getElementById('event-allday');
+const alldayLabel = document.getElementById('allday-label');
+const timeRow = document.querySelector('.time-row');
+
 let selectedDateKey = '';
+let selectedEndDateKey = '';
 
 // --- Events storage ---
 function getEvents() {
@@ -157,6 +164,9 @@ function applySettings() {
 
   // Placeholder
   eventTitleInput.placeholder = t.placeholder;
+
+  // All-day label
+  alldayLabel.textContent = t.allDay;
 
   // Active toggle buttons
   document.querySelectorAll('.toggle-btn').forEach((btn) => {
@@ -245,11 +255,19 @@ function renderMonthly() {
     }
 
     cell.appendChild(dayNum);
-    appendEvents(cell, dateKey(cellYear, cellMonth, date), events, 2);
+
+    const key = dateKey(cellYear, cellMonth, date);
+    cell.dataset.dateKey = key;
+    cell.dataset.year = cellYear;
+    cell.dataset.month = cellMonth;
+    cell.dataset.date = date;
+    cell.dataset.cellIndex = i;
+
+    appendEvents(cell, key, events, 2);
 
     const cy = cellYear, cm = cellMonth, cd = date;
-    cell.addEventListener('click', () => {
-      // Update weekly to show this day's week
+    cell.addEventListener('click', (e) => {
+      if (monthlyDragMoved) return;
       currentWeekStart = getWeekStart(new Date(cy, cm, cd));
       renderWeeklyGrid();
       openModal(cy, cm, cd);
@@ -300,49 +318,66 @@ function renderWeeklyGrid() {
     const isAM = hour < 12;
     const period = isAM ? 'am' : 'pm';
 
-    // Time label
-    const label = document.createElement('div');
-    label.className = `weekly-time-label ${period}`;
-    if (hour === 12) label.classList.add('hour-12');
-    label.textContent = `${hour}:00`;
-    weeklyGrid.appendChild(label);
+    for (let quarter = 0; quarter < 4; quarter++) {
+      // Time label only at quarter=0
+      if (quarter === 0) {
+        const label = document.createElement('div');
+        label.className = `weekly-time-label ${period}`;
+        if (hour === 12) label.classList.add('hour-12');
+        label.textContent = `${hour}:00`;
+        weeklyGrid.appendChild(label);
+      }
 
-    // Day cells
-    for (let i = 0; i < 7; i++) {
-      const d = addDays(currentWeekStart, i);
-      const cell = document.createElement('div');
-      cell.className = `weekly-cell ${period}`;
-      cell.classList.add(`hour-${hour}`);
+      // Day cells
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(currentWeekStart, i);
+        const cell = document.createElement('div');
+        cell.className = `weekly-cell ${period}`;
+        cell.classList.add(`hour-${hour}`);
+        cell.classList.add(`quarter-${quarter}`);
 
-      // Today column highlight
-      const isToday = d.getFullYear() === today.getFullYear() &&
-        d.getMonth() === today.getMonth() &&
-        d.getDate() === today.getDate();
-      if (isToday) cell.classList.add('today-col');
+        // Today column highlight
+        const isToday = d.getFullYear() === today.getFullYear() &&
+          d.getMonth() === today.getMonth() &&
+          d.getDate() === today.getDate();
+        if (isToday) cell.classList.add('today-col');
 
-      // Events in this hour
-      const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-      const dayEvents = events[key] || [];
-      dayEvents.forEach((ev) => {
-        if (ev.start) {
-          const evHour = parseInt(ev.start.split(':')[0]);
-          if (evHour === hour) {
-            const chip = document.createElement('div');
-            chip.className = 'weekly-event-chip';
-            chip.style.background = ev.color;
-            chip.textContent = ev.title;
-            cell.appendChild(chip);
+        // Events in this slot
+        const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        const dayEvents = events[key] || [];
+        dayEvents.forEach((ev) => {
+          if (ev.allDay) {
+            if (hour === 0 && quarter === 0) {
+              const chip = document.createElement('div');
+              chip.className = 'weekly-event-chip';
+              chip.style.background = ev.color;
+              chip.textContent = ev.title;
+              cell.appendChild(chip);
+            }
+          } else if (ev.start) {
+            const parts = ev.start.split(':');
+            const evHour = parseInt(parts[0]);
+            const evMin = parseInt(parts[1] || '0');
+            const evQuarter = Math.floor(evMin / 15);
+            if (evHour === hour && evQuarter === quarter) {
+              const chip = document.createElement('div');
+              chip.className = 'weekly-event-chip';
+              chip.style.background = ev.color;
+              chip.textContent = ev.title;
+              cell.appendChild(chip);
+            }
           }
-        }
-      });
+        });
 
-      const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
-      cell.dataset.dayIndex = i;
-      cell.dataset.hour = hour;
-      cell.dataset.year = cy;
-      cell.dataset.month = cm;
-      cell.dataset.date = cd;
-      weeklyGrid.appendChild(cell);
+        const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
+        cell.dataset.dayIndex = i;
+        cell.dataset.hour = hour;
+        cell.dataset.quarter = quarter;
+        cell.dataset.year = cy;
+        cell.dataset.month = cm;
+        cell.dataset.date = cd;
+        weeklyGrid.appendChild(cell);
+      }
     }
   }
 }
@@ -357,7 +392,11 @@ function appendEvents(cell, key, events, maxShow) {
     const chip = document.createElement('div');
     chip.className = 'event-chip';
     chip.style.background = ev.color;
-    chip.textContent = ev.start ? `${ev.start} ${ev.title}` : ev.title;
+    if (ev.allDay) {
+      chip.textContent = ev.title;
+    } else {
+      chip.textContent = ev.start ? `${ev.start} ${ev.title}` : ev.title;
+    }
     container.appendChild(chip);
   });
   if (dayEvents.length > maxShow) {
@@ -374,6 +413,10 @@ let isTimeSelecting = false;
 let timeSelectStart = null;
 let timeSelectCurrent = null;
 
+function slotIndex(hour, quarter) {
+  return hour * 4 + quarter;
+}
+
 function getWeeklyCells() {
   return weeklyGrid.querySelectorAll('.weekly-cell');
 }
@@ -385,15 +428,16 @@ function clearTimeSelection() {
 function highlightTimeSelection() {
   clearTimeSelection();
   if (!timeSelectStart || !timeSelectCurrent) return;
-  if (timeSelectStart.dayIndex !== timeSelectCurrent.dayIndex) return;
 
-  const minHour = Math.min(timeSelectStart.hour, timeSelectCurrent.hour);
-  const maxHour = Math.max(timeSelectStart.hour, timeSelectCurrent.hour);
+  const minDay = Math.min(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
+  const maxDay = Math.max(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
+  const minSlot = Math.min(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
+  const maxSlot = Math.max(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
 
   getWeeklyCells().forEach(cell => {
     const di = parseInt(cell.dataset.dayIndex);
-    const h = parseInt(cell.dataset.hour);
-    if (di === timeSelectStart.dayIndex && h >= minHour && h <= maxHour) {
+    const s = slotIndex(parseInt(cell.dataset.hour), parseInt(cell.dataset.quarter));
+    if (di >= minDay && di <= maxDay && s >= minSlot && s <= maxSlot) {
       cell.classList.add('drag-selecting');
     }
   });
@@ -407,6 +451,7 @@ weeklyGrid.addEventListener('mousedown', (e) => {
   timeSelectStart = {
     dayIndex: parseInt(cell.dataset.dayIndex),
     hour: parseInt(cell.dataset.hour),
+    quarter: parseInt(cell.dataset.quarter),
     year: parseInt(cell.dataset.year),
     month: parseInt(cell.dataset.month),
     date: parseInt(cell.dataset.date),
@@ -419,11 +464,13 @@ document.addEventListener('mousemove', (e) => {
   if (!isTimeSelecting) return;
   const cell = e.target.closest('.weekly-cell');
   if (!cell) return;
-  const di = parseInt(cell.dataset.dayIndex);
-  if (di !== timeSelectStart.dayIndex) return;
   timeSelectCurrent = {
-    dayIndex: di,
+    dayIndex: parseInt(cell.dataset.dayIndex),
     hour: parseInt(cell.dataset.hour),
+    quarter: parseInt(cell.dataset.quarter),
+    year: parseInt(cell.dataset.year),
+    month: parseInt(cell.dataset.month),
+    date: parseInt(cell.dataset.date),
   };
   highlightTimeSelection();
 });
@@ -433,18 +480,38 @@ document.addEventListener('mouseup', () => {
   isTimeSelecting = false;
   clearTimeSelection();
   if (!timeSelectStart || !timeSelectCurrent) return;
-  if (timeSelectStart.dayIndex !== timeSelectCurrent.dayIndex) return;
 
-  const minHour = Math.min(timeSelectStart.hour, timeSelectCurrent.hour);
-  const maxHour = Math.max(timeSelectStart.hour, timeSelectCurrent.hour);
+  const minSlot = Math.min(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
+  const maxSlot = Math.max(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
+  const startHour = Math.floor(minSlot / 4);
+  const startQuarter = minSlot % 4;
+  const endSlot = maxSlot + 1;
+  const endHour = Math.floor(endSlot / 4);
+  const endQuarter = endSlot % 4;
 
-  selectedDateKey = dateKey(timeSelectStart.year, timeSelectStart.month, timeSelectStart.date);
+  const startTime = `${String(startHour).padStart(2, '0')}:${String(startQuarter * 15).padStart(2, '0')}`;
+  const endTime = endHour >= 24 ? '23:59' : `${String(endHour).padStart(2, '0')}:${String(endQuarter * 15).padStart(2, '0')}`;
+
+  // Determine start/end dates for multi-day
+  const minDay = Math.min(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
+  const maxDay = Math.max(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
+  const startDate = addDays(currentWeekStart, minDay);
+  const endDate = addDays(currentWeekStart, maxDay);
+
+  selectedDateKey = dateKey(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+  if (minDay !== maxDay) {
+    selectedEndDateKey = dateKey(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  } else {
+    selectedEndDateKey = '';
+  }
+
   const t = i18n[settings.lang];
-  modalTitle.textContent = t.dateModal(timeSelectStart.year, timeSelectStart.month, timeSelectStart.date);
+  modalTitle.textContent = t.dateModal(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
   eventTitleInput.value = '';
-  eventStartInput.value = `${String(minHour).padStart(2, '0')}:00`;
-  const endHour = maxHour + 1;
-  eventEndInput.value = endHour >= 24 ? '23:59' : `${String(endHour).padStart(2, '0')}:00`;
+  eventStartInput.value = startTime;
+  eventEndInput.value = endTime;
+  eventAlldayCheckbox.checked = false;
+  timeRow.classList.remove('hidden');
   eventForm.querySelector('input[name="event-color"][value="#4361ee"]').checked = true;
   modalOverlay.classList.remove('hidden');
   renderEventList();
@@ -452,6 +519,160 @@ document.addEventListener('mouseup', () => {
 
   timeSelectStart = null;
   timeSelectCurrent = null;
+});
+
+// --- Monthly drag for all-day events ---
+let isMonthlySelecting = false;
+let monthlySelectStart = null;
+let monthlySelectCurrent = null;
+let monthlyDragMoved = false;
+let monthlyInlineInput = null;
+
+function getMonthlyCells() {
+  return calendarBody.querySelectorAll('.day-cell');
+}
+
+function clearMonthlySelection() {
+  getMonthlyCells().forEach(c => c.classList.remove('month-drag-selecting'));
+}
+
+function highlightMonthlySelection() {
+  clearMonthlySelection();
+  if (!monthlySelectStart || !monthlySelectCurrent) return;
+
+  const minIdx = Math.min(parseInt(monthlySelectStart.cellIndex), parseInt(monthlySelectCurrent.cellIndex));
+  const maxIdx = Math.max(parseInt(monthlySelectStart.cellIndex), parseInt(monthlySelectCurrent.cellIndex));
+
+  getMonthlyCells().forEach(cell => {
+    const idx = parseInt(cell.dataset.cellIndex);
+    if (idx >= minIdx && idx <= maxIdx) {
+      cell.classList.add('month-drag-selecting');
+    }
+  });
+}
+
+calendarBody.addEventListener('mousedown', (e) => {
+  const cell = e.target.closest('.day-cell');
+  if (!cell) return;
+  // Remove existing inline input
+  if (monthlyInlineInput) {
+    monthlyInlineInput.remove();
+    monthlyInlineInput = null;
+  }
+  isMonthlySelecting = true;
+  monthlyDragMoved = false;
+  monthlySelectStart = {
+    cellIndex: cell.dataset.cellIndex,
+    year: parseInt(cell.dataset.year),
+    month: parseInt(cell.dataset.month),
+    date: parseInt(cell.dataset.date),
+    dateKey: cell.dataset.dateKey,
+  };
+  monthlySelectCurrent = { ...monthlySelectStart };
+  highlightMonthlySelection();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isMonthlySelecting) return;
+  const cell = e.target.closest('.day-cell');
+  if (!cell) return;
+  if (cell.dataset.cellIndex !== monthlySelectStart.cellIndex) {
+    monthlyDragMoved = true;
+  }
+  monthlySelectCurrent = {
+    cellIndex: cell.dataset.cellIndex,
+    year: parseInt(cell.dataset.year),
+    month: parseInt(cell.dataset.month),
+    date: parseInt(cell.dataset.date),
+    dateKey: cell.dataset.dateKey,
+  };
+  highlightMonthlySelection();
+});
+
+document.addEventListener('mouseup', (e) => {
+  if (!isMonthlySelecting) return;
+  isMonthlySelecting = false;
+  if (!monthlySelectStart || !monthlySelectCurrent) {
+    clearMonthlySelection();
+    return;
+  }
+  if (!monthlyDragMoved) {
+    clearMonthlySelection();
+    return;
+  }
+
+  // Show inline input on the first selected cell
+  const minIdx = Math.min(parseInt(monthlySelectStart.cellIndex), parseInt(monthlySelectCurrent.cellIndex));
+  const cells = getMonthlyCells();
+  let targetCell = null;
+  cells.forEach(c => {
+    if (parseInt(c.dataset.cellIndex) === minIdx) targetCell = c;
+  });
+
+  if (targetCell) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'monthly-inline-input';
+    input.placeholder = i18n[settings.lang].placeholder;
+    monthlyInlineInput = input;
+
+    const startInfo = parseInt(monthlySelectStart.cellIndex) <= parseInt(monthlySelectCurrent.cellIndex)
+      ? monthlySelectStart : monthlySelectCurrent;
+    const endInfo = parseInt(monthlySelectStart.cellIndex) <= parseInt(monthlySelectCurrent.cellIndex)
+      ? monthlySelectCurrent : monthlySelectStart;
+
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const title = input.value.trim();
+        if (title) {
+          const events = getEvents();
+          const sKey = dateKey(startInfo.year, startInfo.month, startInfo.date);
+          const eKey = dateKey(endInfo.year, endInfo.month, endInfo.date);
+          if (!events[sKey]) events[sKey] = [];
+          const newEvent = {
+            id: Date.now().toString(36),
+            title,
+            start: '',
+            end: '',
+            color: '#4361ee',
+            allDay: true,
+          };
+          if (sKey !== eKey) {
+            newEvent.endDate = eKey;
+          }
+          events[sKey].push(newEvent);
+          saveEvents(events);
+        }
+        input.remove();
+        monthlyInlineInput = null;
+        clearMonthlySelection();
+        render();
+      } else if (ev.key === 'Escape') {
+        input.remove();
+        monthlyInlineInput = null;
+        clearMonthlySelection();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (monthlyInlineInput === input) {
+          input.remove();
+          monthlyInlineInput = null;
+          clearMonthlySelection();
+        }
+      }, 100);
+    });
+
+    targetCell.appendChild(input);
+    input.focus();
+  } else {
+    clearMonthlySelection();
+  }
+
+  monthlySelectStart = null;
+  monthlySelectCurrent = null;
 });
 
 // --- Navigation ---
@@ -508,10 +729,13 @@ document.querySelectorAll('.toggle-btn').forEach((btn) => {
 function openModal(year, month, day) {
   const t = i18n[settings.lang];
   selectedDateKey = dateKey(year, month, day);
+  selectedEndDateKey = '';
   modalTitle.textContent = t.dateModal(year, month, day);
   eventTitleInput.value = '';
   eventStartInput.value = '';
   eventEndInput.value = '';
+  eventAlldayCheckbox.checked = false;
+  timeRow.classList.remove('hidden');
   eventForm.querySelector('input[name="event-color"][value="#4361ee"]').checked = true;
   modalOverlay.classList.remove('hidden');
   renderEventList();
@@ -534,6 +758,17 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// --- All-day toggle ---
+eventAlldayCheckbox.addEventListener('change', () => {
+  if (eventAlldayCheckbox.checked) {
+    timeRow.classList.add('hidden');
+    eventStartInput.value = '';
+    eventEndInput.value = '';
+  } else {
+    timeRow.classList.remove('hidden');
+  }
+});
+
 // --- Event CRUD ---
 eventForm.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -541,17 +776,26 @@ eventForm.addEventListener('submit', (e) => {
   if (!title) return;
 
   const color = eventForm.querySelector('input[name="event-color"]:checked').value;
-  const start = eventStartInput.value || '';
-  const end = eventEndInput.value || '';
+  const isAllDay = eventAlldayCheckbox.checked;
+  const start = isAllDay ? '' : (eventStartInput.value || '');
+  const end = isAllDay ? '' : (eventEndInput.value || '');
 
   const events = getEvents();
   if (!events[selectedDateKey]) events[selectedDateKey] = [];
-  events[selectedDateKey].push({ id: Date.now().toString(36), title, start, end, color });
+  const newEvent = { id: Date.now().toString(36), title, start, end, color };
+  if (isAllDay) newEvent.allDay = true;
+  if (selectedEndDateKey && selectedEndDateKey !== selectedDateKey) {
+    newEvent.endDate = selectedEndDateKey;
+  }
+  events[selectedDateKey].push(newEvent);
   saveEvents(events);
 
   eventTitleInput.value = '';
   eventStartInput.value = '';
   eventEndInput.value = '';
+  eventAlldayCheckbox.checked = false;
+  timeRow.classList.remove('hidden');
+  selectedEndDateKey = '';
   renderEventList();
   render();
 });
@@ -568,6 +812,7 @@ function deleteEvent(eventId) {
 }
 
 function renderEventList() {
+  const t = i18n[settings.lang];
   const events = getEvents();
   const list = events[selectedDateKey] || [];
   eventList.innerHTML = '';
@@ -586,7 +831,12 @@ function renderEventList() {
     titleSpan.textContent = ev.title;
     info.appendChild(titleSpan);
 
-    if (ev.start) {
+    if (ev.allDay) {
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'ev-time';
+      timeSpan.textContent = t.allDay;
+      info.appendChild(timeSpan);
+    } else if (ev.start) {
       const timeSpan = document.createElement('span');
       timeSpan.className = 'ev-time';
       timeSpan.textContent = ev.end ? `${ev.start} ~ ${ev.end}` : ev.start;
