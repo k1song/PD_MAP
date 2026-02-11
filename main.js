@@ -93,6 +93,7 @@ const eventList = document.getElementById('event-list');
 const weeklyDayHeaders = document.getElementById('weekly-day-headers');
 const weeklyGrid = document.getElementById('weekly-grid');
 const weeklyScroll = document.getElementById('weekly-scroll');
+const weeklyAlldayRow = document.getElementById('weekly-allday-row');
 
 const eventAlldayCheckbox = document.getElementById('event-allday');
 const alldayLabel = document.getElementById('allday-label');
@@ -213,6 +214,31 @@ function render() {
   renderWeeklyGrid();
 }
 
+function collectMultiDayEvents(events) {
+  const map = {};
+  for (const startKey of Object.keys(events)) {
+    const dayEvents = events[startKey];
+    for (const ev of dayEvents) {
+      if (!ev.endDate || ev.endDate <= startKey) continue;
+      // Expand from startKey to endDate inclusive
+      const s = new Date(startKey + 'T00:00:00');
+      const e = new Date(ev.endDate + 'T00:00:00');
+      for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        if (!map[dk]) map[dk] = [];
+        map[dk].push({
+          ...ev,
+          _startKey: startKey,
+          _endKey: ev.endDate,
+          _isStart: dk === startKey,
+          _isEnd: dk === ev.endDate,
+        });
+      }
+    }
+  }
+  return map;
+}
+
 function renderMonthly() {
   const t = i18n[settings.lang];
   monthTitle.textContent = t.monthTitle(currentYear, currentMonth);
@@ -226,6 +252,7 @@ function renderMonthly() {
   const offset = (firstDay - start + 7) % 7;
   const totalCells = Math.ceil((offset + lastDate) / 7) * 7;
   const events = getEvents();
+  const multiDayMap = collectMultiDayEvents(events);
 
   for (let i = 0; i < totalCells; i++) {
     const cell = document.createElement('div');
@@ -276,7 +303,7 @@ function renderMonthly() {
     cell.dataset.date = date;
     cell.dataset.cellIndex = i;
 
-    appendEvents(cell, key, events, 2);
+    appendEvents(cell, key, events, 2, multiDayMap[key] || [], i % 7);
 
     const cy = cellYear, cm = cellMonth, cd = date;
     cell.addEventListener('click', (e) => {
@@ -325,7 +352,63 @@ function renderWeeklyGrid() {
 
   // Render time grid
   weeklyGrid.innerHTML = '';
+  weeklyAlldayRow.innerHTML = '';
   const events = getEvents();
+  const multiDayMap = collectMultiDayEvents(events);
+
+  // Collect all-day events for sticky row
+  let hasAllDay = false;
+  const allDayByCol = [];
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(currentWeekStart, i);
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    const dayEvents = events[key] || [];
+    const multiDay = multiDayMap[key] || [];
+    // All-day multi-day events
+    const mdAllDay = multiDay.filter(md => md.allDay);
+    // Single-day all-day events (not in multiDayMap)
+    const singleAllDay = dayEvents.filter(ev => ev.allDay && (!ev.endDate || ev.endDate <= key));
+    const combined = [...mdAllDay, ...singleAllDay];
+    allDayByCol.push(combined);
+    if (combined.length > 0) hasAllDay = true;
+  }
+
+  // Render all-day sticky row if any exist
+  if (hasAllDay) {
+    const label = document.createElement('div');
+    label.className = 'weekly-allday-label';
+    label.textContent = i18n[settings.lang].allDay;
+    weeklyAlldayRow.appendChild(label);
+
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(currentWeekStart, i);
+      const cell = document.createElement('div');
+      cell.className = 'weekly-allday-cell';
+      const isToday = d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+      if (isToday) cell.classList.add('today-col');
+
+      for (const ev of allDayByCol[i]) {
+        const chip = document.createElement('div');
+        chip.className = 'weekly-event-chip';
+        chip.style.background = ev.color;
+        // Multi-day bar styling
+        if (ev._startKey) {
+          chip.classList.add('multi-day');
+          const isBarStart = ev._isStart || i === 0;
+          const isBarEnd = ev._isEnd || i === 6;
+          if (isBarStart) chip.classList.add('multi-bar-start');
+          if (isBarEnd) chip.classList.add('multi-bar-end');
+          chip.textContent = isBarStart ? ev.title : '\u00A0';
+        } else {
+          chip.textContent = ev.title;
+        }
+        cell.appendChild(chip);
+      }
+      weeklyAlldayRow.appendChild(cell);
+    }
+  }
 
   for (let hour = 0; hour < 24; hour++) {
     const isAM = hour < 12;
@@ -355,19 +438,12 @@ function renderWeeklyGrid() {
           d.getDate() === today.getDate();
         if (isToday) cell.classList.add('today-col');
 
-        // Events in this slot
+        // Events in this slot — skip all-day events
         const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
         const dayEvents = events[key] || [];
         dayEvents.forEach((ev) => {
-          if (ev.allDay) {
-            if (hour === 0 && quarter === 0) {
-              const chip = document.createElement('div');
-              chip.className = 'weekly-event-chip';
-              chip.style.background = ev.color;
-              chip.textContent = ev.title;
-              cell.appendChild(chip);
-            }
-          } else if (ev.start) {
+          if (ev.allDay) return;
+          if (ev.start) {
             const parts = ev.start.split(':');
             const evHour = parseInt(parts[0]);
             const evMin = parseInt(parts[1] || '0');
@@ -395,13 +471,37 @@ function renderWeeklyGrid() {
   }
 }
 
-function appendEvents(cell, key, events, maxShow) {
-  const dayEvents = events[key];
-  if (!dayEvents || dayEvents.length === 0) return;
+function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
+  multiDayEvents = multiDayEvents || [];
+  const dayEvents = events[key] || [];
+  // Single-day events: those without endDate (or endDate === key)
+  const singleDayEvents = dayEvents.filter(ev => !ev.endDate || ev.endDate <= key);
+  const totalCount = multiDayEvents.length + singleDayEvents.length;
+  if (totalCount === 0) return;
+
   const t = i18n[settings.lang];
   const container = document.createElement('div');
   container.className = 'events-container';
-  dayEvents.slice(0, maxShow).forEach((ev) => {
+  let shown = 0;
+
+  // Render multi-day bars first
+  for (const mdEv of multiDayEvents) {
+    if (shown >= maxShow) break;
+    const chip = document.createElement('div');
+    chip.className = 'event-chip multi-day';
+    chip.style.background = mdEv.color;
+    const isBarStart = mdEv._isStart || colIndex === 0;
+    const isBarEnd = mdEv._isEnd || colIndex === 6;
+    if (isBarStart) chip.classList.add('multi-bar-start');
+    if (isBarEnd) chip.classList.add('multi-bar-end');
+    chip.textContent = isBarStart ? mdEv.title : '\u00A0';
+    container.appendChild(chip);
+    shown++;
+  }
+
+  // Render single-day events
+  for (const ev of singleDayEvents) {
+    if (shown >= maxShow) break;
     const chip = document.createElement('div');
     chip.className = 'event-chip';
     chip.style.background = ev.color;
@@ -411,11 +511,13 @@ function appendEvents(cell, key, events, maxShow) {
       chip.textContent = ev.start ? `${ev.start} ${ev.title}` : ev.title;
     }
     container.appendChild(chip);
-  });
-  if (dayEvents.length > maxShow) {
+    shown++;
+  }
+
+  if (totalCount > maxShow) {
     const more = document.createElement('div');
     more.className = 'event-more';
-    more.textContent = t.more(dayEvents.length - maxShow);
+    more.textContent = t.more(totalCount - maxShow);
     container.appendChild(more);
   }
   cell.appendChild(container);
