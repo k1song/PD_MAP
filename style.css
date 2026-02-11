@@ -270,13 +270,18 @@ html, body {
 }
 
 /* Weekly time grid */
+.weekly-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 .weekly-day-headers {
   display: grid;
   grid-template-columns: 46px repeat(7, 1fr);
   background: var(--header-bg);
   border-radius: 12px 12px 0 0;
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 .weekly-corner {
@@ -320,7 +325,7 @@ html, body {
   overflow-x: hidden;
   overflow-y: auto;
   user-select: none;
-  border-radius: 0 0 12px 12px;
+  border-radius: 12px;
 }
 
 .weekly-scroll::-webkit-scrollbar {
@@ -878,6 +883,10 @@ html, body {
   border-radius: 3px;
 }
 
+.event-chip.multi-day-spacer {
+  visibility: hidden;
+}
+
 /* Weekly all-day sticky row */
 .weekly-allday-row {
   display: grid;
@@ -935,4 +944,8 @@ html, body {
 
 .weekly-event-chip.multi-bar-start.multi-bar-end {
   border-radius: 2px;
+}
+
+.weekly-event-chip.multi-day-spacer {
+  visibility: hidden;
 }

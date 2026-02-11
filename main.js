@@ -215,25 +215,55 @@ function render() {
 }
 
 function collectMultiDayEvents(events) {
-  const map = {};
+  // Collect all multi-day events
+  const allMD = [];
   for (const startKey of Object.keys(events)) {
     const dayEvents = events[startKey];
     for (const ev of dayEvents) {
       if (!ev.endDate || ev.endDate <= startKey) continue;
-      // Expand from startKey to endDate inclusive
-      const s = new Date(startKey + 'T00:00:00');
-      const e = new Date(ev.endDate + 'T00:00:00');
-      for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        if (!map[dk]) map[dk] = [];
-        map[dk].push({
-          ...ev,
-          _startKey: startKey,
-          _endKey: ev.endDate,
-          _isStart: dk === startKey,
-          _isEnd: dk === ev.endDate,
-        });
+      allMD.push({ ...ev, _startKey: startKey });
+    }
+  }
+
+  // Sort: earlier start first, longer duration first, then by id
+  allMD.sort((a, b) => {
+    if (a._startKey !== b._startKey) return a._startKey < b._startKey ? -1 : 1;
+    if (a.endDate !== b.endDate) return a.endDate > b.endDate ? -1 : 1;
+    return (a.id || '').localeCompare(b.id || '');
+  });
+
+  // Assign lanes greedily
+  const lanes = [];
+  for (const ev of allMD) {
+    let lane = -1;
+    for (let i = 0; i < lanes.length; i++) {
+      if (lanes[i] < ev._startKey) {
+        lane = i;
+        lanes[i] = ev.endDate;
+        break;
       }
+    }
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push(ev.endDate);
+    }
+    ev._lane = lane;
+  }
+
+  // Build the day map
+  const map = {};
+  for (const ev of allMD) {
+    const s = new Date(ev._startKey + 'T00:00:00');
+    const e = new Date(ev.endDate + 'T00:00:00');
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      if (!map[dk]) map[dk] = [];
+      map[dk].push({
+        ...ev,
+        _endKey: ev.endDate,
+        _isStart: dk === ev._startKey,
+        _isEnd: dk === ev.endDate,
+      });
     }
   }
   return map;
@@ -358,19 +388,18 @@ function renderWeeklyGrid() {
 
   // Collect all-day events for sticky row
   let hasAllDay = false;
-  const allDayByCol = [];
+  const multiDayByCol = [];
+  const singleAllDayByCol = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(currentWeekStart, i);
     const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
     const dayEvents = events[key] || [];
     const multiDay = multiDayMap[key] || [];
-    // All-day multi-day events
     const mdAllDay = multiDay.filter(md => md.allDay);
-    // Single-day all-day events (not in multiDayMap)
     const singleAllDay = dayEvents.filter(ev => ev.allDay && (!ev.endDate || ev.endDate <= key));
-    const combined = [...mdAllDay, ...singleAllDay];
-    allDayByCol.push(combined);
-    if (combined.length > 0) hasAllDay = true;
+    multiDayByCol.push(mdAllDay);
+    singleAllDayByCol.push(singleAllDay);
+    if (mdAllDay.length > 0 || singleAllDay.length > 0) hasAllDay = true;
   }
 
   // Render all-day sticky row if any exist
@@ -389,21 +418,39 @@ function renderWeeklyGrid() {
         d.getDate() === today.getDate();
       if (isToday) cell.classList.add('today-col');
 
-      for (const ev of allDayByCol[i]) {
+      // Sort multi-day events by lane
+      const sortedMD = [...multiDayByCol[i]].sort((a, b) => (a._lane || 0) - (b._lane || 0));
+
+      // Render with spacers for consistent lane positions
+      let nextLane = 0;
+      for (const ev of sortedMD) {
+        const lane = ev._lane || 0;
+        while (nextLane < lane) {
+          const spacer = document.createElement('div');
+          spacer.className = 'weekly-event-chip multi-day-spacer';
+          spacer.textContent = '\u00A0';
+          cell.appendChild(spacer);
+          nextLane++;
+        }
         const chip = document.createElement('div');
         chip.className = 'weekly-event-chip';
         chip.style.background = ev.color;
-        // Multi-day bar styling
-        if (ev._startKey) {
-          chip.classList.add('multi-day');
-          const isBarStart = ev._isStart || i === 0;
-          const isBarEnd = ev._isEnd || i === 6;
-          if (isBarStart) chip.classList.add('multi-bar-start');
-          if (isBarEnd) chip.classList.add('multi-bar-end');
-          chip.textContent = isBarStart ? ev.title : '\u00A0';
-        } else {
-          chip.textContent = ev.title;
-        }
+        chip.classList.add('multi-day');
+        const isBarStart = ev._isStart || i === 0;
+        const isBarEnd = ev._isEnd || i === 6;
+        if (isBarStart) chip.classList.add('multi-bar-start');
+        if (isBarEnd) chip.classList.add('multi-bar-end');
+        chip.textContent = isBarStart ? ev.title : '\u00A0';
+        cell.appendChild(chip);
+        nextLane = lane + 1;
+      }
+
+      // Render single-day all-day events after multi-day bars
+      for (const ev of singleAllDayByCol[i]) {
+        const chip = document.createElement('div');
+        chip.className = 'weekly-event-chip';
+        chip.style.background = ev.color;
+        chip.textContent = ev.title;
         cell.appendChild(chip);
       }
       weeklyAlldayRow.appendChild(cell);
@@ -474,19 +521,33 @@ function renderWeeklyGrid() {
 function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
   multiDayEvents = multiDayEvents || [];
   const dayEvents = events[key] || [];
-  // Single-day events: those without endDate (or endDate === key)
   const singleDayEvents = dayEvents.filter(ev => !ev.endDate || ev.endDate <= key);
-  const totalCount = multiDayEvents.length + singleDayEvents.length;
-  if (totalCount === 0) return;
+  const totalEvents = multiDayEvents.length + singleDayEvents.length;
+  if (totalEvents === 0) return;
 
   const t = i18n[settings.lang];
   const container = document.createElement('div');
   container.className = 'events-container';
-  let shown = 0;
+  let slots = 0;
+  let eventsShown = 0;
 
-  // Render multi-day bars first
-  for (const mdEv of multiDayEvents) {
-    if (shown >= maxShow) break;
+  // Sort multi-day events by lane for consistent positions
+  const sortedMD = [...multiDayEvents].sort((a, b) => (a._lane || 0) - (b._lane || 0));
+
+  // Render multi-day bars in lane order with spacers
+  let nextLane = 0;
+  for (const mdEv of sortedMD) {
+    const lane = mdEv._lane || 0;
+    while (nextLane < lane && slots < maxShow) {
+      const spacer = document.createElement('div');
+      spacer.className = 'event-chip multi-day-spacer';
+      spacer.textContent = '\u00A0';
+      container.appendChild(spacer);
+      slots++;
+      nextLane++;
+    }
+    if (slots >= maxShow) break;
+
     const chip = document.createElement('div');
     chip.className = 'event-chip multi-day';
     chip.style.background = mdEv.color;
@@ -496,12 +557,14 @@ function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
     if (isBarEnd) chip.classList.add('multi-bar-end');
     chip.textContent = isBarStart ? mdEv.title : '\u00A0';
     container.appendChild(chip);
-    shown++;
+    slots++;
+    eventsShown++;
+    nextLane = lane + 1;
   }
 
   // Render single-day events
   for (const ev of singleDayEvents) {
-    if (shown >= maxShow) break;
+    if (slots >= maxShow) break;
     const chip = document.createElement('div');
     chip.className = 'event-chip';
     chip.style.background = ev.color;
@@ -511,13 +574,14 @@ function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
       chip.textContent = ev.start ? `${ev.start} ${ev.title}` : ev.title;
     }
     container.appendChild(chip);
-    shown++;
+    slots++;
+    eventsShown++;
   }
 
-  if (totalCount > maxShow) {
+  if (totalEvents > eventsShown) {
     const more = document.createElement('div');
     more.className = 'event-more';
-    more.textContent = t.more(totalCount - maxShow);
+    more.textContent = t.more(totalEvents - eventsShown);
     container.appendChild(more);
   }
   cell.appendChild(container);
