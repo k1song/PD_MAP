@@ -15,6 +15,9 @@ const i18n = {
     mon: '월요일',
     save: '저장',
     placeholder: '일정 제목',
+    layout: '배치',
+    layoutMW: '월|주',
+    layoutWM: '주|월',
   },
   en: {
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -37,11 +40,14 @@ const i18n = {
     mon: 'Monday',
     save: 'Save',
     placeholder: 'Event title',
+    layout: 'Layout',
+    layoutMW: 'M|W',
+    layoutWM: 'W|M',
   },
 };
 
 // --- Settings ---
-const defaultSettings = { lang: 'ko', theme: 'light', startDay: '0' };
+const defaultSettings = { lang: 'ko', theme: 'light', startDay: '0', layout: 'mw' };
 
 function loadSettings() {
   const saved = localStorage.getItem('pdmap-settings');
@@ -130,12 +136,23 @@ function applySettings() {
   document.querySelector('[data-i18n="lang"]').textContent = t.lang;
   document.querySelector('[data-i18n="theme"]').textContent = t.theme;
   document.querySelector('[data-i18n="startDay"]').textContent = t.startDay;
+  document.querySelector('[data-i18n="layout"]').textContent = t.layout;
 
   // Update settings button labels
   document.querySelector('[data-i18n-btn="light"]').textContent = t.light;
   document.querySelector('[data-i18n-btn="dark"]').textContent = t.dark;
   document.querySelector('[data-i18n-btn="sun"]').textContent = t.sun;
   document.querySelector('[data-i18n-btn="mon"]').textContent = t.mon;
+  document.querySelector('[data-i18n-btn="layoutMW"]').textContent = t.layoutMW;
+  document.querySelector('[data-i18n-btn="layoutWM"]').textContent = t.layoutWM;
+
+  // Apply layout order
+  const calendarContent = document.querySelector('.calendar-content');
+  if (settings.layout === 'wm') {
+    calendarContent.classList.add('layout-wm');
+  } else {
+    calendarContent.classList.remove('layout-wm');
+  }
   document.querySelector('[data-i18n-btn="save"]').textContent = t.save;
 
   // Placeholder
@@ -264,7 +281,14 @@ function renderWeeklyGrid() {
       d.getDate() === today.getDate();
     if (isToday) header.classList.add('today-col');
 
-    header.textContent = `${t.days[dayIdx]} ${d.getDate()}`;
+    const dateNum = document.createElement('div');
+    dateNum.className = 'weekly-day-date';
+    dateNum.textContent = d.getDate();
+    const dayName = document.createElement('div');
+    dayName.className = 'weekly-day-name';
+    dayName.textContent = t.days[dayIdx];
+    header.appendChild(dateNum);
+    header.appendChild(dayName);
     weeklyDayHeaders.appendChild(header);
   }
 
@@ -313,10 +337,11 @@ function renderWeeklyGrid() {
       });
 
       const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
-      cell.addEventListener('click', () => {
-        if (wasDragging) return;
-        openModal(cy, cm, cd);
-      });
+      cell.dataset.dayIndex = i;
+      cell.dataset.hour = hour;
+      cell.dataset.year = cy;
+      cell.dataset.month = cm;
+      cell.dataset.date = cd;
       weeklyGrid.appendChild(cell);
     }
   }
@@ -344,30 +369,89 @@ function appendEvents(cell, key, events, maxShow) {
   cell.appendChild(container);
 }
 
-// --- Drag to scroll (weekly) ---
-let isDragging = false;
-let wasDragging = false;
-let dragStartY = 0;
-let dragScrollTop = 0;
+// --- Drag to select time (weekly) ---
+let isTimeSelecting = false;
+let timeSelectStart = null;
+let timeSelectCurrent = null;
 
-weeklyScroll.addEventListener('mousedown', (e) => {
-  isDragging = true;
-  wasDragging = false;
-  dragStartY = e.pageY;
-  dragScrollTop = weeklyScroll.scrollTop;
+function getWeeklyCells() {
+  return weeklyGrid.querySelectorAll('.weekly-cell');
+}
+
+function clearTimeSelection() {
+  getWeeklyCells().forEach(c => c.classList.remove('drag-selecting'));
+}
+
+function highlightTimeSelection() {
+  clearTimeSelection();
+  if (!timeSelectStart || !timeSelectCurrent) return;
+  if (timeSelectStart.dayIndex !== timeSelectCurrent.dayIndex) return;
+
+  const minHour = Math.min(timeSelectStart.hour, timeSelectCurrent.hour);
+  const maxHour = Math.max(timeSelectStart.hour, timeSelectCurrent.hour);
+
+  getWeeklyCells().forEach(cell => {
+    const di = parseInt(cell.dataset.dayIndex);
+    const h = parseInt(cell.dataset.hour);
+    if (di === timeSelectStart.dayIndex && h >= minHour && h <= maxHour) {
+      cell.classList.add('drag-selecting');
+    }
+  });
+}
+
+weeklyGrid.addEventListener('mousedown', (e) => {
+  const cell = e.target.closest('.weekly-cell');
+  if (!cell) return;
+  e.preventDefault();
+  isTimeSelecting = true;
+  timeSelectStart = {
+    dayIndex: parseInt(cell.dataset.dayIndex),
+    hour: parseInt(cell.dataset.hour),
+    year: parseInt(cell.dataset.year),
+    month: parseInt(cell.dataset.month),
+    date: parseInt(cell.dataset.date),
+  };
+  timeSelectCurrent = { ...timeSelectStart };
+  highlightTimeSelection();
 });
 
 document.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
-  if (Math.abs(e.pageY - dragStartY) > 3) {
-    wasDragging = true;
-  }
-  weeklyScroll.scrollTop = dragScrollTop - (e.pageY - dragStartY);
+  if (!isTimeSelecting) return;
+  const cell = e.target.closest('.weekly-cell');
+  if (!cell) return;
+  const di = parseInt(cell.dataset.dayIndex);
+  if (di !== timeSelectStart.dayIndex) return;
+  timeSelectCurrent = {
+    dayIndex: di,
+    hour: parseInt(cell.dataset.hour),
+  };
+  highlightTimeSelection();
 });
 
 document.addEventListener('mouseup', () => {
-  isDragging = false;
-  setTimeout(() => { wasDragging = false; }, 0);
+  if (!isTimeSelecting) return;
+  isTimeSelecting = false;
+  clearTimeSelection();
+  if (!timeSelectStart || !timeSelectCurrent) return;
+  if (timeSelectStart.dayIndex !== timeSelectCurrent.dayIndex) return;
+
+  const minHour = Math.min(timeSelectStart.hour, timeSelectCurrent.hour);
+  const maxHour = Math.max(timeSelectStart.hour, timeSelectCurrent.hour);
+
+  selectedDateKey = dateKey(timeSelectStart.year, timeSelectStart.month, timeSelectStart.date);
+  const t = i18n[settings.lang];
+  modalTitle.textContent = t.dateModal(timeSelectStart.year, timeSelectStart.month, timeSelectStart.date);
+  eventTitleInput.value = '';
+  eventStartInput.value = `${String(minHour).padStart(2, '0')}:00`;
+  const endHour = maxHour + 1;
+  eventEndInput.value = endHour >= 24 ? '23:59' : `${String(endHour).padStart(2, '0')}:00`;
+  eventForm.querySelector('input[name="event-color"][value="#4361ee"]').checked = true;
+  modalOverlay.classList.remove('hidden');
+  renderEventList();
+  eventTitleInput.focus();
+
+  timeSelectStart = null;
+  timeSelectCurrent = null;
 });
 
 // --- Navigation ---

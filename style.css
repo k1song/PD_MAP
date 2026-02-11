@@ -144,6 +144,14 @@ html, body {
   min-width: 0;
 }
 
+.calendar-content.layout-wm .monthly-panel {
+  order: 2;
+}
+
+.calendar-content.layout-wm .weekly-panel {
+  order: 1;
+}
+
 .panel-label {
   font-size: 0.7rem;
   font-weight: 700;
@@ -279,11 +287,25 @@ html, body {
 
 .weekly-day-header {
   color: var(--header-text);
-  font-size: 0.72rem;
   font-weight: 600;
   text-align: center;
-  padding: 5px 2px;
-  letter-spacing: 0.02em;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0px;
+}
+
+.weekly-day-date {
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+
+.weekly-day-name {
+  font-size: 0.6rem;
+  line-height: 1.2;
+  opacity: 0.85;
 }
 
 .weekly-day-header.sunday { color: var(--sunday); }
@@ -296,13 +318,8 @@ html, body {
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  cursor: grab;
   user-select: none;
   border-radius: 0 0 12px 12px;
-}
-
-.weekly-scroll:active {
-  cursor: grabbing;
 }
 
 .weekly-scroll::-webkit-scrollbar {
