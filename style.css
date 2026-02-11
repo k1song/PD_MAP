@@ -579,6 +579,37 @@ html, body {
   border-color: var(--accent);
 }
 
+.date-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.date-row input[type="date"] {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1.5px solid var(--input-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  outline: none;
+  background: var(--cell-bg);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+
+.date-row input[type="date"]:focus {
+  border-color: var(--accent);
+}
+
+.date-row span {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.date-row.hidden {
+  display: none;
+}
+
 .time-row {
   display: flex;
   align-items: center;

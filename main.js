@@ -98,8 +98,21 @@ const eventAlldayCheckbox = document.getElementById('event-allday');
 const alldayLabel = document.getElementById('allday-label');
 const timeRow = document.querySelector('.time-row');
 
+const eventStartDateInput = document.getElementById('event-start-date');
+const eventEndDateInput = document.getElementById('event-end-date');
+const dateRow = document.querySelector('.date-row');
+
 let selectedDateKey = '';
 let selectedEndDateKey = '';
+
+// --- Undo stack ---
+const undoStack = [];
+const UNDO_MAX = 50;
+
+function pushUndo() {
+  undoStack.push(JSON.parse(JSON.stringify(getEvents())));
+  if (undoStack.length > UNDO_MAX) undoStack.shift();
+}
 
 // --- Events storage ---
 function getEvents() {
@@ -425,19 +438,22 @@ function clearTimeSelection() {
   getWeeklyCells().forEach(c => c.classList.remove('drag-selecting'));
 }
 
+function globalSlot(dayIndex, hour, quarter) {
+  return dayIndex * 96 + hour * 4 + quarter;
+}
+
 function highlightTimeSelection() {
   clearTimeSelection();
   if (!timeSelectStart || !timeSelectCurrent) return;
 
-  const minDay = Math.min(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
-  const maxDay = Math.max(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
-  const minSlot = Math.min(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
-  const maxSlot = Math.max(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
+  const startGlobal = globalSlot(timeSelectStart.dayIndex, timeSelectStart.hour, timeSelectStart.quarter);
+  const currentGlobal = globalSlot(timeSelectCurrent.dayIndex, timeSelectCurrent.hour, timeSelectCurrent.quarter);
+  const minGlobal = Math.min(startGlobal, currentGlobal);
+  const maxGlobal = Math.max(startGlobal, currentGlobal);
 
   getWeeklyCells().forEach(cell => {
-    const di = parseInt(cell.dataset.dayIndex);
-    const s = slotIndex(parseInt(cell.dataset.hour), parseInt(cell.dataset.quarter));
-    if (di >= minDay && di <= maxDay && s >= minSlot && s <= maxSlot) {
+    const g = globalSlot(parseInt(cell.dataset.dayIndex), parseInt(cell.dataset.hour), parseInt(cell.dataset.quarter));
+    if (g >= minGlobal && g <= maxGlobal) {
       cell.classList.add('drag-selecting');
     }
   });
@@ -481,26 +497,35 @@ document.addEventListener('mouseup', () => {
   clearTimeSelection();
   if (!timeSelectStart || !timeSelectCurrent) return;
 
-  const minSlot = Math.min(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
-  const maxSlot = Math.max(slotIndex(timeSelectStart.hour, timeSelectStart.quarter), slotIndex(timeSelectCurrent.hour, timeSelectCurrent.quarter));
-  const startHour = Math.floor(minSlot / 4);
-  const startQuarter = minSlot % 4;
-  const endSlot = maxSlot + 1;
-  const endHour = Math.floor(endSlot / 4);
-  const endQuarter = endSlot % 4;
+  // Use global slots for continuous selection
+  const startGlobal = globalSlot(timeSelectStart.dayIndex, timeSelectStart.hour, timeSelectStart.quarter);
+  const currentGlobal = globalSlot(timeSelectCurrent.dayIndex, timeSelectCurrent.hour, timeSelectCurrent.quarter);
+  const minGlobal = Math.min(startGlobal, currentGlobal);
+  const maxGlobal = Math.max(startGlobal, currentGlobal);
+
+  // Derive start day/time from min global slot
+  const startDayIdx = Math.floor(minGlobal / 96);
+  const startSlotInDay = minGlobal % 96;
+  const startHour = Math.floor(startSlotInDay / 4);
+  const startQuarter = startSlotInDay % 4;
+
+  // Derive end day/time from max global slot (+1 for end)
+  const endGlobal = maxGlobal + 1;
+  const endDayIdx = Math.floor(Math.min(endGlobal, 7 * 96 - 1) / 96);
+  const endSlotInDay = endGlobal % 96;
+  const endHour = endGlobal >= 7 * 96 ? 23 : Math.floor(endSlotInDay / 4);
+  const endQuarter = endGlobal >= 7 * 96 ? 59 : endSlotInDay % 4;
 
   const startTime = `${String(startHour).padStart(2, '0')}:${String(startQuarter * 15).padStart(2, '0')}`;
-  const endTime = endHour >= 24 ? '23:59' : `${String(endHour).padStart(2, '0')}:${String(endQuarter * 15).padStart(2, '0')}`;
+  const endTime = endGlobal >= 7 * 96 ? '23:59' : (endHour >= 24 ? '23:59' : `${String(endHour).padStart(2, '0')}:${String(endQuarter * 15).padStart(2, '0')}`);
 
-  // Determine start/end dates for multi-day
-  const minDay = Math.min(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
-  const maxDay = Math.max(timeSelectStart.dayIndex, timeSelectCurrent.dayIndex);
-  const startDate = addDays(currentWeekStart, minDay);
-  const endDate = addDays(currentWeekStart, maxDay);
+  const startDate = addDays(currentWeekStart, startDayIdx);
+  const endDate = addDays(currentWeekStart, endDayIdx);
 
   selectedDateKey = dateKey(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-  if (minDay !== maxDay) {
-    selectedEndDateKey = dateKey(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  const endDateKey = dateKey(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  if (endDateKey !== selectedDateKey) {
+    selectedEndDateKey = endDateKey;
   } else {
     selectedEndDateKey = '';
   }
@@ -510,6 +535,8 @@ document.addEventListener('mouseup', () => {
   eventTitleInput.value = '';
   eventStartInput.value = startTime;
   eventEndInput.value = endTime;
+  eventStartDateInput.value = selectedDateKey;
+  eventEndDateInput.value = selectedEndDateKey || selectedDateKey;
   eventAlldayCheckbox.checked = false;
   timeRow.classList.remove('hidden');
   eventForm.querySelector('input[name="event-color"][value="#4361ee"]').checked = true;
@@ -626,6 +653,7 @@ document.addEventListener('mouseup', (e) => {
         ev.preventDefault();
         const title = input.value.trim();
         if (title) {
+          pushUndo();
           const events = getEvents();
           const sKey = dateKey(startInfo.year, startInfo.month, startInfo.date);
           const eKey = dateKey(endInfo.year, endInfo.month, endInfo.date);
@@ -734,6 +762,8 @@ function openModal(year, month, day) {
   eventTitleInput.value = '';
   eventStartInput.value = '';
   eventEndInput.value = '';
+  eventStartDateInput.value = selectedDateKey;
+  eventEndDateInput.value = selectedDateKey;
   eventAlldayCheckbox.checked = false;
   timeRow.classList.remove('hidden');
   eventForm.querySelector('input[name="event-color"][value="#4361ee"]').checked = true;
@@ -755,6 +785,16 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!modalOverlay.classList.contains('hidden')) closeModal();
     else if (!settingsOverlay.classList.contains('hidden')) settingsOverlay.classList.add('hidden');
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    if (undoStack.length === 0) return;
+    const snapshot = undoStack.pop();
+    saveEvents(snapshot);
+    render();
+    if (!modalOverlay.classList.contains('hidden')) {
+      renderEventList();
+    }
   }
 });
 
@@ -780,6 +820,11 @@ eventForm.addEventListener('submit', (e) => {
   const start = isAllDay ? '' : (eventStartInput.value || '');
   const end = isAllDay ? '' : (eventEndInput.value || '');
 
+  // Read dates from date inputs
+  selectedDateKey = eventStartDateInput.value || selectedDateKey;
+  selectedEndDateKey = eventEndDateInput.value || '';
+
+  pushUndo();
   const events = getEvents();
   if (!events[selectedDateKey]) events[selectedDateKey] = [];
   const newEvent = { id: Date.now().toString(36), title, start, end, color };
@@ -793,6 +838,8 @@ eventForm.addEventListener('submit', (e) => {
   eventTitleInput.value = '';
   eventStartInput.value = '';
   eventEndInput.value = '';
+  eventStartDateInput.value = selectedDateKey;
+  eventEndDateInput.value = selectedDateKey;
   eventAlldayCheckbox.checked = false;
   timeRow.classList.remove('hidden');
   selectedEndDateKey = '';
@@ -801,6 +848,7 @@ eventForm.addEventListener('submit', (e) => {
 });
 
 function deleteEvent(eventId) {
+  pushUndo();
   const events = getEvents();
   const list = events[selectedDateKey];
   if (!list) return;
@@ -834,12 +882,20 @@ function renderEventList() {
     if (ev.allDay) {
       const timeSpan = document.createElement('span');
       timeSpan.className = 'ev-time';
-      timeSpan.textContent = t.allDay;
+      if (ev.endDate && ev.endDate !== selectedDateKey) {
+        timeSpan.textContent = `${t.allDay} (${selectedDateKey} ~ ${ev.endDate})`;
+      } else {
+        timeSpan.textContent = t.allDay;
+      }
       info.appendChild(timeSpan);
     } else if (ev.start) {
       const timeSpan = document.createElement('span');
       timeSpan.className = 'ev-time';
-      timeSpan.textContent = ev.end ? `${ev.start} ~ ${ev.end}` : ev.start;
+      if (ev.endDate && ev.endDate !== selectedDateKey) {
+        timeSpan.textContent = `${selectedDateKey} ${ev.start} ~ ${ev.endDate} ${ev.end || ''}`.trim();
+      } else {
+        timeSpan.textContent = ev.end ? `${ev.start} ~ ${ev.end}` : ev.start;
+      }
       info.appendChild(timeSpan);
     }
 
