@@ -949,3 +949,28 @@ html, body {
 .weekly-event-chip.multi-day-spacer {
   visibility: hidden;
 }
+
+/* Weekly event time blocks */
+.weekly-event-block {
+  z-index: 2;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.62rem;
+  padding: 2px 4px;
+  margin: 0 1px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  line-height: 1.3;
+}
+
+.weekly-event-block:hover {
+  opacity: 0.85;
+}
+
+/* Spanning event in modal list */
+#event-list li.spanning-event {
+  opacity: 0.8;
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
+}

@@ -19,6 +19,7 @@ const i18n = {
     layoutMW: '월|주',
     layoutWM: '주|월',
     allDay: '종일',
+    update: '수정',
   },
   en: {
     days: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -45,6 +46,7 @@ const i18n = {
     layoutMW: 'M|W',
     layoutWM: 'W|M',
     allDay: 'All Day',
+    update: 'Update',
   },
 };
 
@@ -105,6 +107,58 @@ const dateRow = document.querySelector('.date-row');
 
 let selectedDateKey = '';
 let selectedEndDateKey = '';
+let editingEventId = null;
+let editingEventKey = null;
+
+// --- Edit helpers ---
+function collectSpanningEvents(events, targetKey) {
+  const result = [];
+  const seen = new Set();
+  for (const dk of Object.keys(events)) {
+    for (const ev of events[dk]) {
+      if (seen.has(ev.id)) continue;
+      if (ev.endDate && dk <= targetKey && ev.endDate >= targetKey) {
+        if (dk === targetKey) continue;
+        seen.add(ev.id);
+        result.push({ ...ev, _originKey: dk });
+      }
+    }
+  }
+  return result;
+}
+
+function clearEditState() {
+  editingEventId = null;
+  editingEventKey = null;
+  const t = i18n[settings.lang];
+  document.querySelector('[data-i18n-btn="save"]').textContent = t.save;
+}
+
+function openEventEdit(ev, originKey) {
+  editingEventId = ev.id;
+  editingEventKey = originKey;
+  eventTitleInput.value = ev.title;
+  eventStartDateInput.value = originKey;
+  eventEndDateInput.value = ev.endDate || originKey;
+  selectedDateKey = originKey;
+  selectedEndDateKey = ev.endDate || '';
+  if (ev.allDay) {
+    eventAlldayCheckbox.checked = true;
+    timeRow.classList.add('hidden');
+    eventStartInput.value = '';
+    eventEndInput.value = '';
+  } else {
+    eventAlldayCheckbox.checked = false;
+    timeRow.classList.remove('hidden');
+    eventStartInput.value = ev.start || '';
+    eventEndInput.value = ev.end || '';
+  }
+  const colorRadio = eventForm.querySelector(`input[name="event-color"][value="${ev.color}"]`);
+  if (colorRadio) colorRadio.checked = true;
+  const t = i18n[settings.lang];
+  document.querySelector('[data-i18n-btn="save"]').textContent = t.update;
+  eventTitleInput.focus();
+}
 
 // --- Undo stack ---
 const undoStack = [];
@@ -174,7 +228,7 @@ function applySettings() {
   } else {
     calendarContent.classList.remove('layout-wm');
   }
-  document.querySelector('[data-i18n-btn="save"]').textContent = t.save;
+  document.querySelector('[data-i18n-btn="save"]').textContent = editingEventId ? t.update : t.save;
 
   // Placeholder
   eventTitleInput.placeholder = t.placeholder;
@@ -441,6 +495,11 @@ function renderWeeklyGrid() {
         if (isBarStart) chip.classList.add('multi-bar-start');
         if (isBarEnd) chip.classList.add('multi-bar-end');
         chip.textContent = isBarStart ? ev.title : '\u00A0';
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openModal(d.getFullYear(), d.getMonth(), d.getDate());
+          openEventEdit(ev, ev._startKey);
+        });
         cell.appendChild(chip);
         nextLane = lane + 1;
       }
@@ -451,6 +510,11 @@ function renderWeeklyGrid() {
         chip.className = 'weekly-event-chip';
         chip.style.background = ev.color;
         chip.textContent = ev.title;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openModal(d.getFullYear(), d.getMonth(), d.getDate());
+          openEventEdit(ev, key);
+        });
         cell.appendChild(chip);
       }
       weeklyAlldayRow.appendChild(cell);
@@ -485,26 +549,6 @@ function renderWeeklyGrid() {
           d.getDate() === today.getDate();
         if (isToday) cell.classList.add('today-col');
 
-        // Events in this slot — skip all-day events
-        const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        const dayEvents = events[key] || [];
-        dayEvents.forEach((ev) => {
-          if (ev.allDay) return;
-          if (ev.start) {
-            const parts = ev.start.split(':');
-            const evHour = parseInt(parts[0]);
-            const evMin = parseInt(parts[1] || '0');
-            const evQuarter = Math.floor(evMin / 15);
-            if (evHour === hour && evQuarter === quarter) {
-              const chip = document.createElement('div');
-              chip.className = 'weekly-event-chip';
-              chip.style.background = ev.color;
-              chip.textContent = ev.title;
-              cell.appendChild(chip);
-            }
-          }
-        });
-
         const cy = d.getFullYear(), cm = d.getMonth(), cd = d.getDate();
         cell.dataset.dayIndex = i;
         cell.dataset.hour = hour;
@@ -515,6 +559,45 @@ function renderWeeklyGrid() {
         weeklyGrid.appendChild(cell);
       }
     }
+  }
+
+  // Render timed event blocks with explicit grid positioning
+  for (let i = 0; i < 7; i++) {
+    const d = addDays(currentWeekStart, i);
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    const dayEvents = events[key] || [];
+    dayEvents.forEach((ev) => {
+      if (ev.allDay || !ev.start) return;
+      const startParts = ev.start.split(':');
+      const startH = parseInt(startParts[0]);
+      const startM = parseInt(startParts[1] || '0');
+      const startRow = startH * 4 + Math.floor(startM / 15) + 1;
+      let endRow;
+      if (ev.end) {
+        const endParts = ev.end.split(':');
+        const endH = parseInt(endParts[0]);
+        const endM = parseInt(endParts[1] || '0');
+        endRow = endH * 4 + Math.ceil(endM / 15) + 1;
+      } else {
+        endRow = startRow + 1;
+      }
+      if (endRow <= startRow) endRow = startRow + 1;
+      if (endRow > 97) endRow = 97;
+
+      const block = document.createElement('div');
+      block.className = 'weekly-event-block';
+      block.style.background = ev.color;
+      block.style.gridColumn = `${i + 2}`;
+      block.style.gridRow = `${startRow} / ${endRow}`;
+      block.textContent = ev.title;
+      block.addEventListener('mousedown', (e) => e.stopPropagation());
+      block.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openModal(d.getFullYear(), d.getMonth(), d.getDate());
+        openEventEdit(ev, key);
+      });
+      weeklyGrid.appendChild(block);
+    });
   }
 }
 
@@ -556,6 +639,14 @@ function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
     if (isBarStart) chip.classList.add('multi-bar-start');
     if (isBarEnd) chip.classList.add('multi-bar-end');
     chip.textContent = isBarStart ? mdEv.title : '\u00A0';
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cy = parseInt(cell.dataset.year), cm = parseInt(cell.dataset.month), cd = parseInt(cell.dataset.date);
+      currentWeekStart = getWeekStart(new Date(cy, cm, cd));
+      renderWeeklyGrid();
+      openModal(cy, cm, cd);
+      openEventEdit(mdEv, mdEv._startKey);
+    });
     container.appendChild(chip);
     slots++;
     eventsShown++;
@@ -573,6 +664,14 @@ function appendEvents(cell, key, events, maxShow, multiDayEvents, colIndex) {
     } else {
       chip.textContent = ev.start ? `${ev.start} ${ev.title}` : ev.title;
     }
+    chip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cy = parseInt(cell.dataset.year), cm = parseInt(cell.dataset.month), cd = parseInt(cell.dataset.date);
+      currentWeekStart = getWeekStart(new Date(cy, cm, cd));
+      renderWeeklyGrid();
+      openModal(cy, cm, cd);
+      openEventEdit(ev, key);
+    });
     container.appendChild(chip);
     slots++;
     eventsShown++;
@@ -921,6 +1020,7 @@ document.querySelectorAll('.toggle-btn').forEach((btn) => {
 
 // --- Event modal ---
 function openModal(year, month, day) {
+  clearEditState();
   const t = i18n[settings.lang];
   selectedDateKey = dateKey(year, month, day);
   selectedEndDateKey = '';
@@ -940,6 +1040,7 @@ function openModal(year, month, day) {
 
 function closeModal() {
   modalOverlay.classList.add('hidden');
+  clearEditState();
 }
 
 modalClose.addEventListener('click', closeModal);
@@ -986,19 +1087,48 @@ eventForm.addEventListener('submit', (e) => {
   const start = isAllDay ? '' : (eventStartInput.value || '');
   const end = isAllDay ? '' : (eventEndInput.value || '');
 
-  // Read dates from date inputs
-  selectedDateKey = eventStartDateInput.value || selectedDateKey;
-  selectedEndDateKey = eventEndDateInput.value || '';
+  const newStartKey = eventStartDateInput.value || selectedDateKey;
+  const newEndKey = eventEndDateInput.value || '';
 
   pushUndo();
   const events = getEvents();
-  if (!events[selectedDateKey]) events[selectedDateKey] = [];
-  const newEvent = { id: Date.now().toString(36), title, start, end, color };
-  if (isAllDay) newEvent.allDay = true;
-  if (selectedEndDateKey && selectedEndDateKey !== selectedDateKey) {
-    newEvent.endDate = selectedEndDateKey;
+
+  if (editingEventId) {
+    // Edit mode
+    const oldKey = editingEventKey;
+    const oldList = events[oldKey] || [];
+    const evIdx = oldList.findIndex(ev => ev.id === editingEventId);
+    if (evIdx !== -1) {
+      const updatedEvent = { ...oldList[evIdx], title, start, end, color };
+      if (isAllDay) updatedEvent.allDay = true; else delete updatedEvent.allDay;
+      if (newEndKey && newEndKey !== newStartKey) {
+        updatedEvent.endDate = newEndKey;
+      } else {
+        delete updatedEvent.endDate;
+      }
+      if (newStartKey !== oldKey) {
+        oldList.splice(evIdx, 1);
+        if (oldList.length === 0) delete events[oldKey];
+        if (!events[newStartKey]) events[newStartKey] = [];
+        events[newStartKey].push(updatedEvent);
+      } else {
+        oldList[evIdx] = updatedEvent;
+      }
+    }
+    clearEditState();
+  } else {
+    // Create mode
+    if (!events[newStartKey]) events[newStartKey] = [];
+    const newEvent = { id: Date.now().toString(36), title, start, end, color };
+    if (isAllDay) newEvent.allDay = true;
+    if (newEndKey && newEndKey !== newStartKey) {
+      newEvent.endDate = newEndKey;
+    }
+    events[newStartKey].push(newEvent);
   }
-  events[selectedDateKey].push(newEvent);
+
+  selectedDateKey = newStartKey;
+  selectedEndDateKey = newEndKey;
   saveEvents(events);
 
   eventTitleInput.value = '';
@@ -1013,14 +1143,16 @@ eventForm.addEventListener('submit', (e) => {
   render();
 });
 
-function deleteEvent(eventId) {
+function deleteEvent(eventId, originKey) {
+  const key = originKey || selectedDateKey;
   pushUndo();
   const events = getEvents();
-  const list = events[selectedDateKey];
+  const list = events[key];
   if (!list) return;
-  events[selectedDateKey] = list.filter((ev) => ev.id !== eventId);
-  if (events[selectedDateKey].length === 0) delete events[selectedDateKey];
+  events[key] = list.filter((ev) => ev.id !== eventId);
+  if (events[key].length === 0) delete events[key];
   saveEvents(events);
+  clearEditState();
   renderEventList();
   render();
 }
@@ -1028,10 +1160,15 @@ function deleteEvent(eventId) {
 function renderEventList() {
   const t = i18n[settings.lang];
   const events = getEvents();
-  const list = events[selectedDateKey] || [];
+  const directList = (events[selectedDateKey] || []).map(ev => ({ ...ev, _originKey: selectedDateKey }));
+  const spanningList = collectSpanningEvents(events, selectedDateKey);
+  const list = [...directList, ...spanningList];
   eventList.innerHTML = '';
   list.forEach((ev) => {
     const li = document.createElement('li');
+    if (ev._originKey !== selectedDateKey) {
+      li.classList.add('spanning-event');
+    }
 
     const dot = document.createElement('span');
     dot.className = 'event-dot';
@@ -1048,8 +1185,8 @@ function renderEventList() {
     if (ev.allDay) {
       const timeSpan = document.createElement('span');
       timeSpan.className = 'ev-time';
-      if (ev.endDate && ev.endDate !== selectedDateKey) {
-        timeSpan.textContent = `${t.allDay} (${selectedDateKey} ~ ${ev.endDate})`;
+      if (ev.endDate && ev.endDate !== ev._originKey) {
+        timeSpan.textContent = `${t.allDay} (${ev._originKey} ~ ${ev.endDate})`;
       } else {
         timeSpan.textContent = t.allDay;
       }
@@ -1057,8 +1194,8 @@ function renderEventList() {
     } else if (ev.start) {
       const timeSpan = document.createElement('span');
       timeSpan.className = 'ev-time';
-      if (ev.endDate && ev.endDate !== selectedDateKey) {
-        timeSpan.textContent = `${selectedDateKey} ${ev.start} ~ ${ev.endDate} ${ev.end || ''}`.trim();
+      if (ev.endDate && ev.endDate !== ev._originKey) {
+        timeSpan.textContent = `${ev._originKey} ${ev.start} ~ ${ev.endDate} ${ev.end || ''}`.trim();
       } else {
         timeSpan.textContent = ev.end ? `${ev.start} ~ ${ev.end}` : ev.start;
       }
@@ -1068,7 +1205,13 @@ function renderEventList() {
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-delete';
     delBtn.innerHTML = '&times;';
-    delBtn.addEventListener('click', () => deleteEvent(ev.id));
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteEvent(ev.id, ev._originKey);
+    });
+
+    li.style.cursor = 'pointer';
+    li.addEventListener('click', () => openEventEdit(ev, ev._originKey));
 
     li.appendChild(dot);
     li.appendChild(info);
